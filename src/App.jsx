@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sprout, MapPin, Users, Building2, Landmark, ShieldAlert, Plus, TreeDeciduous, Award } from "lucide-react";
+import { Sprout, MapPin, Users, Building2, Landmark, ShieldAlert, Plus, TreeDeciduous, Award, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 
 const TARGET = 250000000; // 25 crore
 const PHASE1_TARGET = 15000000; // 1.5 crore
@@ -193,6 +193,61 @@ function computeImpact(count) {
 function fmtWeight(kg) {
   if (kg >= 1000) return `${(kg / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} tonnes`;
   return `${Math.round(kg)} kg`;
+}
+
+function compressImage(file, maxDim = 1280, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+      else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Compression failed")), "image/jpeg", quality);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Uses Claude's vision API to confirm the photo actually shows a young tree/sapling
+// before it's allowed to count toward a Verified certificate.
+async function validateTreePhoto(blob) {
+  const base64 = await blobToBase64(blob);
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } },
+          { type: "text", text: "Does this photo clearly show a small/young tree or sapling — e.g. recently planted, in soil or a small pot, visible trunk/stem and leaves? Reply with ONLY strict JSON, no markdown, no preamble: {\"is_tree\": true or false, \"confidence\": \"high\" or \"medium\" or \"low\", \"reason\": \"<one short sentence>\"}" },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error("Validation request failed");
+  const data = await res.json();
+  const textBlock = data.content?.find(c => c.type === "text");
+  if (!textBlock) throw new Error("No response from validator");
+  const cleaned = textBlock.text.replace(/```json|```/g, "").trim();
+  return JSON.parse(cleaned);
 }
 
 function loadImage(src) {
@@ -389,12 +444,31 @@ export default function App() {
   });
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoValidation, setPhotoValidation] = useState(null); // { status: 'checking'|'valid'|'invalid'|'error', message }
 
-  function handlePhotoChange(e) {
+  async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
-    if (!file) { setPhotoFile(null); setPhotoPreview(null); return; }
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    if (!file) { setPhotoFile(null); setPhotoPreview(null); setPhotoValidation(null); return; }
+    setPhotoValidation({ status: "checking", message: "Checking photo…" });
+    try {
+      const compressedBlob = await compressImage(file);
+      const compressedFile = new File(
+        [compressedBlob],
+        file.name.replace(/\.[^.]+$/, "") + ".jpg",
+        { type: "image/jpeg" }
+      );
+      setPhotoFile(compressedFile);
+      setPhotoPreview(URL.createObjectURL(compressedBlob));
+
+      const result = await validateTreePhoto(compressedBlob);
+      if (result.is_tree) {
+        setPhotoValidation({ status: "valid", message: result.confidence === "low" ? "Looks like a tree (low confidence) — allowed." : "Looks like a tree ✓" });
+      } else {
+        setPhotoValidation({ status: "invalid", message: result.reason || "This doesn't look like a photo of a tree." });
+      }
+    } catch (err) {
+      setPhotoValidation({ status: "error", message: "Couldn't auto-check this photo — you can still submit it." });
+    }
   }
   const [toast, setToast] = useState(null);
   const [certEntry, setCertEntry] = useState(null); // entry being certified
@@ -502,6 +576,15 @@ export default function App() {
     const species = form.species === "Other" ? (form.customSpecies || "Unspecified") : form.species;
 
     try {
+      if (photoFile && photoValidation?.status === "checking") {
+        setToast("Still checking your photo — try again in a second.");
+        return;
+      }
+      if (photoFile && photoValidation?.status === "invalid") {
+        setToast(`Photo not accepted: ${photoValidation.message} Please upload a clear photo of the tree, or remove the photo to submit without it.`);
+        return;
+      }
+
       // Geolocation is best-effort: denied/unavailable/blocked (common in sandboxed
       // previews) just means the entry stays unverified — it never blocks submission
       // unless a photo was attached, since photo+location together = verified.
@@ -548,7 +631,7 @@ export default function App() {
       const saved = await insertPlanting(session.accessToken, payload);
       setEntries(prev => [saved, ...prev]);
       setForm(f => ({ ...f, count: "", place: "", by: "" }));
-      setPhotoFile(null); setPhotoPreview(null);
+      setPhotoFile(null); setPhotoPreview(null); setPhotoValidation(null);
       setStorageError(null);
       setLastSynced(new Date());
       let statusNote = "";
@@ -583,6 +666,8 @@ export default function App() {
           outline: 2px solid #5B8C51; outline-offset: 2px;
         }
         ::placeholder { color: #8B9A8A; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
 
         .app-main {
           display: grid;
@@ -725,6 +810,17 @@ export default function App() {
               {photoPreview && (
                 <img src={photoPreview} alt="preview" style={{ marginTop: 8, width: "100%", maxHeight: 140, objectFit: "cover", borderRadius: 8, border: "1px solid #DCE0D2" }} />
               )}
+              {photoValidation && (
+                <div style={{
+                  marginTop: 6, display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, fontWeight: 500,
+                  color: photoValidation.status === "valid" ? "#2E6B3E" : photoValidation.status === "invalid" ? "#B84A3A" : "#6B7568",
+                }}>
+                  {photoValidation.status === "checking" && <Loader2 size={13} className="spin" style={{ flexShrink: 0, marginTop: 1 }} />}
+                  {photoValidation.status === "valid" && <CheckCircle2 size={13} style={{ flexShrink: 0, marginTop: 1 }} />}
+                  {photoValidation.status === "invalid" && <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />}
+                  <span>{photoValidation.message}</span>
+                </div>
+              )}
             </Field>
             <Field label="Submitted by">
               <input value={form.by} onChange={e => setForm(f => ({ ...f, by: e.target.value }))} style={inputStyle} placeholder="Your name or organisation" />
@@ -748,12 +844,12 @@ export default function App() {
                 })}
               </div>
             </Field>
-            <button type="submit" disabled={submitting} style={{
+            <button type="submit" disabled={submitting || photoValidation?.status === "checking"} style={{
               marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              background: submitting ? "#4A5347" : "#1F3D2B", color: "#EDEEE2", border: "none", borderRadius: 9,
-              padding: "12px 16px", fontSize: 14.5, fontWeight: 600, cursor: submitting ? "default" : "pointer",
+              background: (submitting || photoValidation?.status === "checking") ? "#4A5347" : "#1F3D2B", color: "#EDEEE2", border: "none", borderRadius: 9,
+              padding: "12px 16px", fontSize: 14.5, fontWeight: 600, cursor: (submitting || photoValidation?.status === "checking") ? "default" : "pointer",
             }}>
-              <Plus size={16} /> {submitting ? "Checking & saving…" : "Log planting"}
+              <Plus size={16} /> {submitting ? "Checking & saving…" : photoValidation?.status === "checking" ? "Checking photo…" : "Log planting"}
             </button>
           </form>
         </section>
