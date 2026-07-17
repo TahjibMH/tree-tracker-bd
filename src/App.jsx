@@ -907,14 +907,14 @@ export default function App() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        {e.species} <span style={{ fontWeight: 400, color: "#6B7568" }}>· {e.submitted_by_name}</span>
+                        {e.species} <span style={{ fontWeight: 400, color: "#6B7568" }}>· {t.label}</span>
                         <span style={{ fontSize: 10, fontWeight: 600, color: status.color, background: status.bg, padding: "2px 7px", borderRadius: 20 }}
                           title={e.verification_note || ""}>
                           {status.label}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: "#8B9A8A", display: "flex", alignItems: "center", gap: 4 }}>
-                        <MapPin size={11} /> {div?.name}{e.district ? `, ${e.district}` : ""} · {when}
+                      <div style={{ fontSize: 12.5, color: "#4A5347", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                        <MapPin size={12} color="#5B8C51" /> {div?.name}{e.district ? `, ${e.district}` : ""} · {when}
                       </div>
                     </div>
                     <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: "#1F3D2B", flexShrink: 0 }}>
