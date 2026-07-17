@@ -87,7 +87,24 @@ async function signInAnon() {
   });
   if (!res.ok) throw new Error("Anonymous sign-in failed — check it's enabled in Supabase Auth settings.");
   const data = await res.json();
-  return { accessToken: data.access_token, userId: data.user?.id };
+  const expiresAt = data.expires_at ? data.expires_at * 1000 : Date.now() + (data.expires_in || 3600) * 1000;
+  return { accessToken: data.access_token, userId: data.user?.id, expiresAt };
+}
+
+const SESSION_STORAGE_KEY = "tt-anon-session";
+// Wrapped defensively — localStorage is blocked in this Claude artifact preview's
+// sandboxed iframe (persistence won't work here) but works normally once deployed.
+function loadStoredSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed.expiresAt || parsed.expiresAt < Date.now()) return null;
+    return parsed;
+  } catch (err) { return null; }
+}
+function storeSession(session) {
+  try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session)); } catch (err) { /* preview sandbox — ignore */ }
 }
 
 async function fetchPlantings() {
@@ -537,13 +554,18 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Note: this anonymous session lives only in memory for this artifact preview —
-    // it resets on refresh here. On the real deployed site (outside this sandbox),
-    // it persists properly via cookies/localStorage so "my own unverified entries"
-    // stays consistent across visits.
-    signInAnon()
-      .then(setSession)
-      .catch(err => setStorageError(err.message));
+    // Reuses a saved session (via localStorage) so "which entries are mine" — and
+    // therefore certificate access — persists across page reloads on the real
+    // deployed site. In this Claude artifact preview, localStorage is blocked, so
+    // it falls back to a fresh anonymous session each time (expected here).
+    const stored = loadStoredSession();
+    if (stored) {
+      setSession(stored);
+    } else {
+      signInAnon()
+        .then(s => { setSession(s); storeSession(s); })
+        .catch(err => setStorageError(err.message));
+    }
     loadEntries(false);
     const interval = setInterval(() => loadEntries(true), POLL_MS);
     return () => clearInterval(interval);
@@ -921,13 +943,15 @@ export default function App() {
                       +{formatBD(e.count)}
                     </div>
                   </div>
-                  <button onClick={() => openCertModal(e)} style={{
-                    marginTop: 10, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    background: "#FBF3E0", border: "1.5px solid #E3C583", borderRadius: 8,
-                    padding: "9px 12px", cursor: "pointer", color: "#8A6318", fontSize: 13, fontWeight: 600,
-                  }}>
-                    <Award size={15} /> Get your certificate
-                  </button>
+                  {session && e.user_id === session.userId && (
+                    <button onClick={() => openCertModal(e)} style={{
+                      marginTop: 10, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                      background: "#FBF3E0", border: "1.5px solid #E3C583", borderRadius: 8,
+                      padding: "9px 12px", cursor: "pointer", color: "#8A6318", fontSize: 13, fontWeight: 600,
+                    }}>
+                      <Award size={15} /> Get your certificate
+                    </button>
+                  )}
                 </div>
               );
             })}
