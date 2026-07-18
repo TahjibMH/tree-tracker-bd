@@ -278,162 +278,233 @@ function loadImage(src) {
 }
 
 async function drawFormalCertificate(canvas, { name, species, count, division, date, certId, verifyUrl, verified }) {
-  const W = 1600, H = 1250;
+  const W = 1600, H = 1200;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   const impact = computeImpact(count);
 
-  ctx.fillStyle = "#F7F5EC";
+  // Soft parchment background
+  const bgGrad = ctx.createRadialGradient(W / 2, H / 2, 180, W / 2, H / 2, W * 0.75);
+  bgGrad.addColorStop(0, "#FBF9F2");
+  bgGrad.addColorStop(1, "#EFEADA");
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
+  // Double border
   ctx.strokeStyle = "#1F3D2B";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(36, 36, W - 72, H - 72);
+  ctx.lineWidth = 4;
+  ctx.strokeRect(48, 48, W - 96, H - 96);
   ctx.strokeStyle = "#C99A3C";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(52, 52, W - 104, H - 104);
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(64, 64, W - 128, H - 128);
+
+  // Corner diamonds
+  [[48, 48], [W - 48, 48], [48, H - 48], [W - 48, H - 48]].forEach(([cx, cy]) => {
+    ctx.fillStyle = "#C99A3C";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 9, cy); ctx.lineTo(cx, cy + 9); ctx.lineTo(cx - 9, cy);
+    ctx.closePath(); ctx.fill();
+  });
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "#C99A3C";
-  ctx.font = "600 22px 'Space Grotesk', sans-serif";
-  ctx.fillText("NATIONAL TREE PLANTATION CAMPAIGN · BANGLADESH", W / 2, 140);
 
+  // Eyebrow with flanking rules
+  ctx.strokeStyle = "#C99A3C"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W / 2 - 300, 122); ctx.lineTo(W / 2 - 150, 122); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2 + 150, 122); ctx.lineTo(W / 2 + 300, 122); ctx.stroke();
+  ctx.fillStyle = "#A8791F";
+  ctx.font = "600 18px 'Space Grotesk', sans-serif";
+  ctx.fillText("NATIONAL TREE PLANTATION CAMPAIGN · BANGLADESH", W / 2, 128);
+
+  // Title
   ctx.fillStyle = "#1F3D2B";
-  ctx.font = "700 50px 'Space Grotesk', sans-serif";
-  ctx.fillText(verified ? "Certificate of Verified Impact" : "Certificate of Participation", W / 2, 210);
+  ctx.font = "700 48px 'Space Grotesk', sans-serif";
+  const title = verified ? "Certificate of Verified Impact" : "Certificate of Participation";
+  ctx.fillText(title, W / 2, 200);
 
-  ctx.fillStyle = "#4A5347";
-  ctx.font = "20px 'Inter', sans-serif";
-  ctx.fillText("This certifies that", W / 2, 290);
+  // Sub-line
+  ctx.fillStyle = "#5B6B57";
+  ctx.font = "18px 'Inter', sans-serif";
+  ctx.fillText("This certifies that", W / 2, 254);
 
+  // Name with underline rule
   ctx.fillStyle = "#16221A";
-  ctx.font = "italic 700 44px 'Space Grotesk', sans-serif";
-  ctx.fillText(name, W / 2, 356);
+  ctx.font = "italic 700 42px 'Space Grotesk', sans-serif";
+  ctx.fillText(name, W / 2, 314);
+  const nameWidth = Math.min(560, ctx.measureText(name).width + 60);
+  ctx.strokeStyle = "#C99A3C"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(W / 2 - nameWidth / 2, 334); ctx.lineTo(W / 2 + nameWidth / 2, 334); ctx.stroke();
 
-  ctx.fillStyle = "#4A5347";
-  ctx.font = "20px 'Inter', sans-serif";
-  ctx.fillText(`contributed ${count.toLocaleString()} ${species} tree(s) in ${division} Division · ${date}`, W / 2, 400);
+  ctx.fillStyle = "#5B6B57";
+  ctx.font = "18px 'Inter', sans-serif";
+  ctx.fillText(`for contributing ${count.toLocaleString()} ${species} tree(s) in ${division} Division · ${date}`, W / 2, 374);
 
   // Impact panel
-  const panelY = 450, panelH = 330;
-  ctx.fillStyle = "#EEF4EA";
-  ctx.beginPath();
-  ctx.roundRect(120, panelY, W - 240, panelH, 16);
-  ctx.fill();
+  const panelY = 420, panelH = 340, panelX = 130, panelW = W - 260;
+  ctx.fillStyle = "#E9F0E3";
+  ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 18); ctx.fill();
+  ctx.fillStyle = "#C99A3C";
+  ctx.fillRect(panelX + 30, panelY, panelW - 60, 3);
 
   ctx.fillStyle = "#1F3D2B";
-  ctx.font = "600 24px 'Space Grotesk', sans-serif";
-  ctx.fillText("🌍 Environmental Impact", W / 2, panelY + 50);
+  ctx.font = "600 23px 'Space Grotesk', sans-serif";
+  ctx.fillText("Environmental Impact", W / 2, panelY + 52);
 
   const stats = [
-    { label: "CO₂ absorbed / year", value: fmtWeight(impact.annualKg) },
-    { label: "CO₂ absorbed over ~40yr lifetime", value: fmtWeight(impact.lifetimeKg) },
-    { label: "Equivalent car travel offset / year", value: `${Math.round(impact.carKm).toLocaleString()} km` },
-    { label: "Oxygen supply / year", value: `~${impact.oxygenPeople.toLocaleString()} people` },
+    { icon: "🌱", label: "CO₂ absorbed / year", value: fmtWeight(impact.annualKg) },
+    { icon: "🌳", label: "CO₂ over ~40yr lifetime", value: fmtWeight(impact.lifetimeKg) },
+    { icon: "🚗", label: "Car travel offset / year", value: `${Math.round(impact.carKm).toLocaleString()} km` },
+    { icon: "💨", label: "Oxygen supply / year", value: `~${impact.oxygenPeople.toLocaleString()} people` },
   ];
-  const colW = (W - 320) / 2;
+  const colW = panelW / 2;
+  // divider lines inside panel
+  ctx.strokeStyle = "#D3DECB"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W / 2, panelY + 78); ctx.lineTo(W / 2, panelY + panelH - 60); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(panelX + 40, panelY + panelH / 2 + 12); ctx.lineTo(panelX + panelW - 40, panelY + panelH / 2 + 12); ctx.stroke();
+
   stats.forEach((s, i) => {
-    const cx = 200 + colW * (i % 2) + colW / 2;
-    const cy = panelY + 130 + Math.floor(i / 2) * 110;
+    const cx = panelX + colW * (i % 2) + colW / 2;
+    const cy = panelY + 130 + Math.floor(i / 2) * 108;
     ctx.fillStyle = "#1F3D2B";
-    ctx.font = "700 34px 'JetBrains Mono', monospace";
-    ctx.fillText(s.value, cx, cy);
+    ctx.font = "700 32px 'JetBrains Mono', monospace";
+    ctx.fillText(`${s.icon}  ${s.value}`, cx, cy);
     ctx.fillStyle = "#5B6B57";
-    ctx.font = "15px 'Inter', sans-serif";
-    ctx.fillText(s.label, cx, cy + 28);
+    ctx.font = "14px 'Inter', sans-serif";
+    ctx.fillText(s.label, cx, cy + 26);
   });
 
   ctx.fillStyle = "#8B9A8A";
-  ctx.font = "13px 'Inter', sans-serif";
-  ctx.fillText("Estimates based on widely-cited averages for a mature tree; illustrative, not lab-measured.", W / 2, panelY + panelH - 18);
+  ctx.font = "12px 'Inter', sans-serif";
+  ctx.fillText("Estimates based on widely-cited averages for a mature tree — illustrative, not lab-measured.", W / 2, panelY + panelH - 16);
 
+  // Footer: ID + note (left) | divider | QR (right)
+  const footerY = panelY + panelH + 55;
+  ctx.strokeStyle = "#D8D2BE"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(120, footerY); ctx.lineTo(W - 320, footerY); ctx.stroke();
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#6B7568";
+  ctx.font = "13px 'Inter', sans-serif";
+  ctx.fillText(`Certificate ID`, 120, footerY + 34);
   ctx.font = "12px monospace";
   ctx.fillStyle = "#8B9A8A";
-  ctx.textAlign = "left";
-  ctx.fillText(`Certificate ID: ${certId}`, 90, H - 90);
-  ctx.fillText(verified ? "Verified via photo + GPS location" : "Unverified submission", 90, H - 68);
+  ctx.fillText(certId, 120, footerY + 54);
+  ctx.font = "13px 'Inter', sans-serif";
+  ctx.fillStyle = verified ? "#2E6B3E" : "#8B9A8A";
+  ctx.fillText(verified ? "✓ Verified via photo + GPS location" : "Unverified submission", 120, footerY + 82);
+
+  // Seal
+  const sealX = W - 220, sealY = footerY + 45;
+  ctx.strokeStyle = "#C99A3C"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(sealX, sealY, 46, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sealX, sealY, 38, 0, Math.PI * 2); ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.font = "22px sans-serif";
+  ctx.fillText("🌳", sealX, sealY + 8);
 
   try {
-    const qr = await loadImage(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}`);
-    ctx.drawImage(qr, W - 290, H - 290, 180, 180);
-    ctx.textAlign = "center";
-    ctx.fillText("Scan to verify", W - 200, H - 96);
+    const qr = await loadImage(`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(verifyUrl)}`);
+    ctx.drawImage(qr, W - 180, footerY, 160, 160);
+    ctx.font = "12px 'Inter', sans-serif";
+    ctx.fillStyle = "#8B9A8A";
+    ctx.fillText("Scan to verify", W - 100, footerY + 178);
   } catch (e) { /* QR optional — cert still valid without it */ }
 
   return canvas;
 }
 
 async function drawSocialCertificate(canvas, { name, species, count, division, certId, verifyUrl, verified }) {
+  // 1080x1920 = standard Instagram/Facebook/Snapchat Story size (9:16).
+  // Content is kept within a safe zone (~300px clear top, ~250px clear bottom)
+  // since those areas get covered by the app's own UI (username sticker, reply bar).
   const W = 1080, H = 1920;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   const impact = computeImpact(count);
 
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, "#1F3D2B");
-  grad.addColorStop(1, "#0F2418");
+  grad.addColorStop(0, "#234A34");
+  grad.addColorStop(1, "#0D1F15");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
+  // Soft glow behind hero number
+  const glow = ctx.createRadialGradient(W / 2, 620, 40, W / 2, 620, 420);
+  glow.addColorStop(0, "rgba(201,154,58,0.20)");
+  glow.addColorStop(1, "rgba(201,154,58,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 300, W, 650);
+
   ctx.textAlign = "center";
-  ctx.fillStyle = "#C99A3C";
-  ctx.font = "600 28px 'Space Grotesk', sans-serif";
-  ctx.fillText(verified ? "VERIFIED IMPACT · BANGLADESH" : "I PLANTED TREES FOR", W / 2, 190);
-  ctx.font = "700 42px 'Space Grotesk', sans-serif";
-  ctx.fillText("BANGLADESH 🌳", W / 2, 245);
 
-  ctx.fillStyle = "#EDEEE2";
-  ctx.font = "700 120px 'JetBrains Mono', monospace";
-  ctx.fillText(count.toLocaleString(), W / 2, 470);
-  ctx.font = "22px 'Inter', sans-serif";
-  ctx.fillStyle = "#B9C4B6";
-  ctx.fillText(`${species} trees · ${division} Division`, W / 2, 515);
+  // Badge pill (safe zone: starts at y=330, well clear of top UI overlay)
+  ctx.fillStyle = "rgba(201,154,58,0.16)";
+  ctx.beginPath(); ctx.roundRect(W / 2 - 230, 300, 460, 52, 26); ctx.fill();
+  ctx.strokeStyle = "#C99A3C"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(W / 2 - 230, 300, 460, 52, 26); ctx.stroke();
+  ctx.fillStyle = "#E4C066";
+  ctx.font = "600 20px 'Space Grotesk', sans-serif";
+  ctx.fillText(verified ? "🌳 VERIFIED IMPACT · BANGLADESH" : "🌳 TREE PLANTATION · BANGLADESH", W / 2, 334);
 
-  ctx.fillStyle = "#EDEEE2";
-  ctx.font = "italic 600 38px 'Space Grotesk', sans-serif";
-  ctx.fillText(name, W / 2, 590);
+  // Hero number
+  ctx.fillStyle = "#F4F1E4";
+  ctx.font = "700 168px 'JetBrains Mono', monospace";
+  ctx.fillText(count.toLocaleString(), W / 2, 640);
+  ctx.font = "500 26px 'Inter', sans-serif";
+  ctx.fillStyle = "#A9BCA6";
+  ctx.fillText(`${species} trees planted · ${division} Division`, W / 2, 690);
 
-  // Impact panel
-  const panelY = 660, panelH = 420;
-  ctx.fillStyle = "rgba(237,238,226,0.08)";
-  ctx.beginPath();
-  ctx.roundRect(70, panelY, W - 140, panelH, 20);
-  ctx.fill();
+  // Name with underline
+  ctx.fillStyle = "#F4F1E4";
+  ctx.font = "italic 600 40px 'Space Grotesk', sans-serif";
+  ctx.fillText(name, W / 2, 770);
+  const nameWidth = Math.min(420, ctx.measureText(name).width + 40);
+  ctx.strokeStyle = "#C99A3C"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(W / 2 - nameWidth / 2, 790); ctx.lineTo(W / 2 + nameWidth / 2, 790); ctx.stroke();
 
-  ctx.fillStyle = "#C99A3C";
-  ctx.font = "600 24px 'Space Grotesk', sans-serif";
-  ctx.fillText("🌍 Environmental Impact", W / 2, panelY + 50);
-
+  // Impact grid — 2x2 cards
+  const gridY = 850, gridH = 460, gridX = 90, gridW = W - 180, gap = 16;
+  const cellW = (gridW - gap) / 2, cellH = (gridH - gap) / 2;
   const stats = [
-    { label: "CO₂ absorbed / year", value: fmtWeight(impact.annualKg) },
-    { label: "CO₂ over ~40yr lifetime", value: fmtWeight(impact.lifetimeKg) },
-    { label: "Car travel offset / year", value: `${Math.round(impact.carKm).toLocaleString()} km` },
-    { label: "Oxygen for", value: `~${impact.oxygenPeople.toLocaleString()} people/yr` },
+    { icon: "🌱", label: "CO₂ / year", value: fmtWeight(impact.annualKg) },
+    { icon: "🌳", label: "CO₂ over ~40yrs", value: fmtWeight(impact.lifetimeKg) },
+    { icon: "🚗", label: "Car km offset/yr", value: `${Math.round(impact.carKm).toLocaleString()} km` },
+    { icon: "💨", label: "O₂ for people/yr", value: `~${impact.oxygenPeople.toLocaleString()}` },
   ];
   stats.forEach((s, i) => {
-    const cy = panelY + 110 + i * 78;
-    ctx.textAlign = "left";
-    ctx.fillStyle = "#EDEEE2";
+    const cx = gridX + (i % 2) * (cellW + gap);
+    const cy = gridY + Math.floor(i / 2) * (cellH + gap);
+    ctx.fillStyle = "rgba(244,241,228,0.07)";
+    ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 18); ctx.fill();
+    ctx.strokeStyle = "rgba(201,154,58,0.25)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 18); ctx.stroke();
+
+    ctx.font = "36px sans-serif";
+    ctx.fillText(s.icon, cx + cellW / 2, cy + 60);
+    ctx.fillStyle = "#F4F1E4";
     ctx.font = "700 30px 'JetBrains Mono', monospace";
-    ctx.fillText(s.value, 110, cy);
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#8FA08A";
-    ctx.font = "16px 'Inter', sans-serif";
-    ctx.fillText(s.label, W - 110, cy);
+    ctx.fillText(s.value, cx + cellW / 2, cy + 108);
+    ctx.fillStyle = "#96A893";
+    ctx.font = "15px 'Inter', sans-serif";
+    ctx.fillText(s.label, cx + cellW / 2, cy + 138);
   });
-  ctx.textAlign = "center";
+
+  // QR — white card for scannability, still inside the bottom safe zone
+  const qrCardY = gridY + gridH + 55, qrCardSize = 200;
+  ctx.fillStyle = "#F4F1E4";
+  ctx.beginPath(); ctx.roundRect(W / 2 - qrCardSize / 2 - 16, qrCardY, qrCardSize + 32, qrCardSize + 32, 16); ctx.fill();
 
   try {
-    const qr = await loadImage(`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(verifyUrl)}`);
-    ctx.drawImage(qr, W / 2 - 110, panelY + panelH + 40, 220, 220);
-    ctx.font = "16px 'Inter', sans-serif";
-    ctx.fillStyle = "#8FA08A";
-    ctx.fillText("Scan to verify this certificate", W / 2, panelY + panelH + 300);
+    const qr = await loadImage(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}`);
+    ctx.drawImage(qr, W / 2 - qrCardSize / 2, qrCardY + 16, qrCardSize, qrCardSize);
   } catch (e) { /* optional */ }
 
+  ctx.font = "15px 'Inter', sans-serif";
+  ctx.fillStyle = "#96A893";
+  ctx.fillText("Scan to verify this certificate", W / 2, qrCardY + qrCardSize + 65);
   ctx.font = "12px monospace";
-  ctx.fillStyle = "#5A6B5A";
-  ctx.fillText(`#${certId.slice(0, 8)}`, W / 2, H - 40);
+  ctx.fillStyle = "#6E8570";
+  ctx.fillText(`#${certId.slice(0, 8)}`, W / 2, qrCardY + qrCardSize + 90);
 
   return canvas;
 }
